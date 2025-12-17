@@ -696,13 +696,13 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* Bottom controls */}
+                {/* Bottom controls - single row */}
                 <div className="pb-8 px-6">
-                  {/* Mute/Speaker row */}
-                  <div className="flex justify-center gap-8 mb-6">
+                  <div className="flex justify-center items-center gap-6">
+                    {/* Mute button */}
                     <button
                       className={cx(
-                        "flex h-14 w-14 items-center justify-center rounded-full transition-all",
+                        "flex h-12 w-12 items-center justify-center rounded-full transition-all",
                         inCall
                           ? muted
                             ? "bg-red-500 text-white"
@@ -712,7 +712,7 @@ export default function Page() {
                       onClick={toggleMute}
                       disabled={!inCall}
                     >
-                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         {muted ? (
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                             d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z M3 3l18 18" />
@@ -723,32 +723,7 @@ export default function Page() {
                       </svg>
                     </button>
 
-                    <button
-                      className={cx(
-                        "flex h-14 w-14 items-center justify-center rounded-full transition-all",
-                        inCall
-                          ? !speaker
-                            ? "bg-red-500 text-white"
-                            : "bg-zinc-800 text-white hover:bg-zinc-700"
-                          : "bg-zinc-900 text-zinc-600",
-                      )}
-                      onClick={toggleSpeaker}
-                      disabled={!inCall}
-                    >
-                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        {!speaker ? (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                            d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                        ) : (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                        )}
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Main call button */}
-                  <div className="flex justify-center">
+                    {/* Call button */}
                     {callState === "idle" || callState === "ended" || callState === "error" ? (
                       <button
                         className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30 transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
@@ -768,6 +743,30 @@ export default function Page() {
                         </svg>
                       </button>
                     )}
+
+                    {/* Speaker button */}
+                    <button
+                      className={cx(
+                        "flex h-12 w-12 items-center justify-center rounded-full transition-all",
+                        inCall
+                          ? !speaker
+                            ? "bg-red-500 text-white"
+                            : "bg-zinc-800 text-white hover:bg-zinc-700"
+                          : "bg-zinc-900 text-zinc-600",
+                      )}
+                      onClick={toggleSpeaker}
+                      disabled={!inCall}
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        {!speaker ? (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                        ) : (
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                        )}
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
