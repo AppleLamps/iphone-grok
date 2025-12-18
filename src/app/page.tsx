@@ -35,6 +35,28 @@ function getStringField(
   return typeof value === "string" ? value : undefined;
 }
 
+function VoiceWaveform({ active, color = "bg-emerald-500" }: { active: boolean; color?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-1.5 h-12">
+      {[...Array(5)].map((_, i) => (
+        <div
+          key={i}
+          className={cx(
+            "w-2 rounded-full transition-all duration-300",
+            color,
+            active ? "animate-wave" : "h-2 opacity-30"
+          )}
+          style={{
+            height: active ? "100%" : "8px",
+            animationDelay: `${i * 0.15}s`,
+            animationDuration: "0.6s"
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function buildSessionInstructions(baseInstructions: string, serverTimeIso?: string) {
   const nowIso = serverTimeIso || new Date().toISOString();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -60,6 +82,7 @@ export default function Page() {
     Array<{ role: "user" | "assistant"; text: string }>
   >([]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -83,6 +106,13 @@ export default function Page() {
     }, 500);
     return () => clearInterval(id);
   }, [callState, callStartedAt]);
+
+  // Auto-scroll transcript
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [transcriptLines]);
 
   const title = useMemo(() => {
     if (callState === "idle") return "Grok Voice";
@@ -578,19 +608,27 @@ export default function Page() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-4 sm:p-6 text-zinc-100">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-6">
+    <div className="min-h-screen bg-linear-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-4 sm:p-6 text-zinc-100 flex items-center justify-center">
+      <div className="w-full flex flex-col items-center gap-6">
         {/* iPhone frame */}
         <div className="relative w-full max-w-[375px]">
-          <div className="relative rounded-[50px] bg-zinc-950 p-3 shadow-2xl ring-1 ring-white/10">
-            <div className="rounded-[38px] bg-black overflow-hidden">
+          <div className="relative rounded-[56px] bg-zinc-950 p-[14px] shadow-2xl ring-1 ring-white/10">
+            <div className="rounded-[42px] bg-black overflow-hidden relative border-[6px] border-zinc-900">
               {/* Dynamic Island */}
-              <div className="absolute left-1/2 top-3 z-20 h-8 w-28 -translate-x-1/2 rounded-full bg-black" />
+              <div className="absolute left-1/2 top-4 z-20 h-7 w-24 -translate-x-1/2 rounded-full bg-black flex items-center justify-center">
+                 {callState === "in_call" && (
+                   <div className="flex gap-0.5 items-center">
+                     <div className="w-1 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                     <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse [animation-delay:0.2s]" />
+                     <div className="w-1 h-2 bg-emerald-500 rounded-full animate-pulse [animation-delay:0.4s]" />
+                   </div>
+                 )}
+              </div>
 
               {/* Screen */}
-              <div className="relative h-[812px] bg-black text-white flex flex-col">
+              <div className="relative h-[780px] bg-black text-white flex flex-col">
                 {/* Status bar */}
-                <div className="flex items-center justify-between px-8 pt-4 text-[12px] font-medium text-zinc-400">
+                <div className="flex items-center justify-between px-8 pt-6 pb-2 text-[12px] font-semibold text-zinc-400">
                   <div>9:41</div>
                   <div className="flex items-center gap-1.5">
                     <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
@@ -599,52 +637,63 @@ export default function Page() {
                     <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M2 17h2v4H2v-4zm4-5h2v9H6v-9zm4-4h2v13h-2V8zm4-4h2v17h-2V4zm4 7h2v10h-2V11z" />
                     </svg>
-                    <div className="ml-1 flex h-4 w-7 items-center rounded-sm border border-zinc-500 px-0.5">
-                      <div className="h-2.5 w-4 rounded-sm bg-zinc-400" />
+                    <div className="ml-1 flex h-3.5 w-6 items-center rounded-sm border border-zinc-500 px-0.5">
+                      <div className="h-2 w-3.5 rounded-[1px] bg-zinc-400" />
                     </div>
                   </div>
                 </div>
 
                 {/* Top section - Avatar and status */}
-                <div className="pt-8 pb-4 text-center">
+                <div className="pt-8 pb-6 text-center">
                   {/* Avatar */}
-                  <div className="mx-auto mb-4">
+                  <div className="mx-auto mb-6 relative">
+                    {callState === "in_call" && (
+                      <div className="absolute top-1/2 left-1/2 -track-x-1/2 -track-y-1/2 w-32 h-32 rounded-full border-2 border-emerald-500/20 animate-pulse-ring -translate-x-1/2 -translate-y-1/2" />
+                    )}
                     <div
                       className={cx(
-                        "relative mx-auto flex h-24 w-24 items-center justify-center rounded-full transition-all duration-300",
+                        "relative mx-auto flex h-28 w-28 items-center justify-center rounded-full transition-all duration-500 shadow-2xl overflow-hidden",
                         callState === "in_call"
-                          ? "bg-emerald-500/20 ring-4 ring-emerald-500/40 shadow-lg shadow-emerald-500/20"
+                          ? "bg-linear-to-tr from-emerald-600 to-emerald-400 scale-110"
                           : callState === "connecting"
-                            ? "bg-blue-500/20 ring-4 ring-blue-500/40 animate-pulse"
-                            : "bg-zinc-800 ring-2 ring-zinc-700",
+                            ? "bg-zinc-800 animate-pulse"
+                            : "bg-zinc-800 scale-100",
                       )}
                     >
-                      <div className="text-4xl">🤖</div>
-                      {callState === "in_call" && (
-                        <div className="absolute -inset-1 rounded-full animate-pulse bg-emerald-500/10" />
+                      {callState === "in_call" ? (
+                        <VoiceWaveform active={statusLine === "Grok is speaking…" || statusLine === "Listening…"} color="bg-white" />
+                      ) : (
+                        <div className="text-4xl">🤖</div>
                       )}
                     </div>
                   </div>
                   
                   {/* Name and status */}
-                  <h1 className="text-2xl font-semibold">{title}</h1>
-                  <p className={cx(
-                    "mt-1 text-sm",
-                    callState === "in_call" ? "text-emerald-400 font-mono" : "text-zinc-500"
-                  )}>
-                    {callState === "in_call" ? formatDuration(seconds) : statusLine}
-                  </p>
+                  <div className="space-y-1">
+                    <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+                    <div className="flex items-center justify-center gap-2">
+                      {callState === "in_call" && (
+                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                      )}
+                      <p className={cx(
+                        "text-sm font-medium",
+                        callState === "in_call" ? "text-emerald-400" : "text-zinc-500"
+                      )}>
+                        {callState === "in_call" ? formatDuration(seconds) : statusLine}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Error display */}
                 {callState === "error" && errorText && (
-                  <div className="mx-4 mb-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-300">
+                  <div className="mx-6 mb-4 rounded-2xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-300 animate-in fade-in slide-in-from-top-2">
                     {errorText}
                   </div>
                 )}
 
                 {/* Transcript area - takes remaining space */}
-                <div className="flex-1 mx-4 mb-4 overflow-hidden flex flex-col">
+                <div className="flex-1 mx-6 mb-4 overflow-hidden flex flex-col">
                   {/* Copy button */}
                   {transcriptLines.length > 0 && (
                     <button
@@ -654,37 +703,44 @@ export default function Page() {
                           .join("\n");
                         navigator.clipboard.writeText(text);
                       }}
-                      className="self-end mb-2 px-3 py-1.5 text-xs text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors flex items-center gap-1.5"
+                      className="self-end mb-2 px-4 py-1.5 text-[11px] font-bold text-zinc-400 hover:text-white glass-dark rounded-full transition-all flex items-center gap-1.5 uppercase tracking-wider"
                     >
                       <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
-                      Copy
+                      Copy Transcript
                     </button>
                   )}
-                  <div className="flex-1 overflow-y-auto rounded-2xl bg-zinc-900/80 border border-zinc-800 p-4">
+                  <div 
+                    ref={scrollRef}
+                    className="flex-1 overflow-y-auto rounded-[28px] bg-zinc-900/40 border border-white/5 p-4 scroll-smooth no-scrollbar"
+                  >
                     {transcriptLines.length === 0 ? (
-                      <div className="h-full flex items-center justify-center">
-                        <p className="text-zinc-600 text-sm">
-                          {callState === "in_call" ? "Listening..." : "Tap the call button to start"}
+                      <div className="h-full flex flex-col items-center justify-center opacity-40">
+                        <div className="mb-4 text-4xl opacity-20">💬</div>
+                        <p className="text-zinc-100 text-[10px] font-bold uppercase tracking-[0.2em]">
+                          {callState === "in_call" ? "Grok is listening..." : "Ready to chat"}
                         </p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
-                        {transcriptLines.slice(-12).map((line, i) => (
+                      <div className="space-y-4">
+                        {transcriptLines.map((line, i) => (
                           <div
                             key={i}
                             className={cx(
-                              "flex",
-                              line.role === "user" ? "justify-end" : "justify-start",
+                              "flex flex-col animate-in fade-in slide-in-from-bottom-2 duration-300",
+                              line.role === "user" ? "items-end" : "items-start",
                             )}
                           >
+                            <span className="text-[9px] font-black text-zinc-600 mb-1 px-1 uppercase tracking-widest">
+                              {line.role === "user" ? "You" : "Grok"}
+                            </span>
                             <div
                               className={cx(
-                                "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
+                                "max-w-[85%] rounded-[20px] px-4 py-3 text-[14px] leading-relaxed shadow-sm",
                                 line.role === "user"
-                                  ? "bg-emerald-600 text-white"
-                                  : "bg-zinc-800 text-zinc-100",
+                                  ? "bg-emerald-500 text-white"
+                                  : "bg-zinc-800/90 text-zinc-100 border border-white/5",
                               )}
                             >
                               {line.text}
@@ -697,27 +753,27 @@ export default function Page() {
                 </div>
 
                 {/* Bottom controls - single row */}
-                <div className="pb-8 px-6">
-                  <div className="flex justify-center items-center gap-6">
+                <div className="pb-10 px-8 pt-4">
+                  <div className="flex justify-between items-center bg-zinc-900/40 p-4 rounded-[36px] border border-white/5 backdrop-blur-2xl">
                     {/* Mute button */}
                     <button
                       className={cx(
-                        "flex h-12 w-12 items-center justify-center rounded-full transition-all",
+                        "flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 transform active:scale-95",
                         inCall
                           ? muted
-                            ? "bg-red-500 text-white"
-                            : "bg-zinc-800 text-white hover:bg-zinc-700"
-                          : "bg-zinc-900 text-zinc-600",
+                            ? "bg-red-500 scale-105 shadow-lg shadow-red-500/20"
+                            : "glass hover:bg-white/20"
+                          : "opacity-20 grayscale cursor-not-allowed",
                       )}
                       onClick={toggleMute}
                       disabled={!inCall}
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         {muted ? (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z M3 3l18 18" />
                         ) : (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                         )}
                       </svg>
@@ -726,19 +782,19 @@ export default function Page() {
                     {/* Call button */}
                     {callState === "idle" || callState === "ended" || callState === "error" ? (
                       <button
-                        className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30 transition-all hover:bg-emerald-400 hover:scale-105 active:scale-95"
+                        className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-xl shadow-emerald-500/40 transition-all duration-300 transform hover:scale-110 active:scale-90"
                         onClick={startCall}
                       >
-                        <svg className="h-7 w-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-8 w-8 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
                         </svg>
                       </button>
                     ) : (
                       <button
-                        className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 shadow-lg shadow-red-500/30 transition-all hover:bg-red-400 hover:scale-105 active:scale-95"
+                        className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 shadow-xl shadow-red-500/40 transition-all duration-300 transform hover:scale-110 active:scale-90"
                         onClick={() => stopCall(false)}
                       >
-                        <svg className="h-7 w-7 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.67-1.85.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
                         </svg>
                       </button>
@@ -747,22 +803,22 @@ export default function Page() {
                     {/* Speaker button */}
                     <button
                       className={cx(
-                        "flex h-12 w-12 items-center justify-center rounded-full transition-all",
+                        "flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 transform active:scale-95",
                         inCall
                           ? !speaker
-                            ? "bg-red-500 text-white"
-                            : "bg-zinc-800 text-white hover:bg-zinc-700"
-                          : "bg-zinc-900 text-zinc-600",
+                            ? "bg-red-500 scale-105 shadow-lg shadow-red-500/20"
+                            : "glass hover:bg-white/20"
+                          : "opacity-20 grayscale cursor-not-allowed",
                       )}
                       onClick={toggleSpeaker}
                       disabled={!inCall}
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         {!speaker ? (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
                         ) : (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
                         )}
                       </svg>
@@ -776,7 +832,6 @@ export default function Page() {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
