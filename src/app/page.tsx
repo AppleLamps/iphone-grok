@@ -77,6 +77,7 @@ export default function Page() {
 
   const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
+  const [clock, setClock] = useState("9:41");
 
   const [transcriptLines, setTranscriptLines] = useState<
     Array<{ role: "user" | "assistant"; text: string }>
@@ -91,6 +92,7 @@ export default function Page() {
   const isPlayingRef = useRef(false);
   const nextPlayTimeRef = useRef(0);
   const isSessionConfiguredRef = useRef(false);
+  const lastUserTranscriptAtRef = useRef<number | null>(null);
   const sessionConfigRef = useRef<
     { voice: string; instructions: string; sampleRate: number } | null
   >(null);
@@ -121,6 +123,25 @@ export default function Page() {
     if (callState === "ended") return "Call Ended";
     return "Error";
   }, [callState]);
+
+  // Live clock for status bar
+  useEffect(() => {
+    const tick = () => {
+      try {
+        const next = new Date().toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        });
+        setClock(next);
+      } catch {
+        setClock("9:41");
+      }
+    };
+
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   function pushLog(line: string) {
     console.log(`[Grok] ${new Date().toISOString().slice(11, 19)} ${line}`);
@@ -327,7 +348,12 @@ export default function Page() {
                       input: { format: { type: "audio/pcm", rate: sampleRate } },
                       output: { format: { type: "audio/pcm", rate: sampleRate } },
                     },
-                    turn_detection: { type: "server_vad" },
+                    turn_detection: {
+                      type: "server_vad",
+                      silence_duration_ms: 1200,
+                      prefix_padding_ms: 200,
+                      threshold: 0.6,
+                    },
                     input_audio_transcription: { model: "grok-2-public" },
                   },
                 }),
@@ -397,10 +423,25 @@ export default function Page() {
             case "conversation.item.input_audio_transcription.completed": {
               const transcript = getStringField(parsed, "transcript");
               if (transcript) {
-                setTranscriptLines((prev) => [
-                  ...prev,
-                  { role: "user", text: transcript },
-                ]);
+                const now = Date.now();
+                setTranscriptLines((prev) => {
+                  const last = prev[prev.length - 1];
+                  const shouldMerge =
+                    last &&
+                    last.role === "user" &&
+                    lastUserTranscriptAtRef.current !== null &&
+                    now - lastUserTranscriptAtRef.current < 1500;
+
+                  if (shouldMerge) {
+                    return [
+                      ...prev.slice(0, -1),
+                      { role: "user", text: `${last.text} ${transcript}`.trim() },
+                    ];
+                  }
+
+                  return [...prev, { role: "user", text: transcript }];
+                });
+                lastUserTranscriptAtRef.current = now;
               }
               break;
             }
@@ -552,19 +593,19 @@ export default function Page() {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
-    } catch {}
+    } catch { }
 
     try {
       workletNode?.disconnect();
-    } catch {}
+    } catch { }
 
     try {
       stream?.getTracks().forEach((t) => t.stop());
-    } catch {}
+    } catch { }
 
     try {
       await audioContext?.close();
-    } catch {}
+    } catch { }
 
     setCallStartedAt(null);
     setSeconds(0);
@@ -599,6 +640,12 @@ export default function Page() {
     });
   }
 
+  function triggerHaptic(duration = 18) {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate?.(duration);
+    }
+  }
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -608,37 +655,50 @@ export default function Page() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-4 sm:p-6 text-zinc-100 flex items-center justify-center">
+    <div
+      className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black p-4 sm:p-6 text-zinc-100 flex items-center justify-center"
+      style={{
+        paddingTop: "max(env(safe-area-inset-top, 16px), 20px)",
+        paddingBottom: "max(env(safe-area-inset-bottom, 16px), 24px)",
+      }}
+    >
       <div className="w-full flex flex-col items-center gap-6">
         {/* iPhone frame */}
-        <div className="relative w-full max-w-[375px]">
-          <div className="relative rounded-[56px] bg-zinc-950 p-[14px] shadow-2xl ring-1 ring-white/10">
-            <div className="rounded-[42px] bg-black overflow-hidden relative border-[6px] border-zinc-900">
+        <div className="relative w-full max-w-[375px] ios-shadow">
+          <div className="relative rounded-[64px] bg-zinc-950 p-[14px] shadow-2xl ring-1 ring-white/10">
+            <div className="notch" />
+            <div className="rounded-[48px] bg-black overflow-hidden relative border-[6px] border-zinc-900 ios-bezel">
               {/* Dynamic Island */}
               <div className="absolute left-1/2 top-4 z-20 h-7 w-24 -translate-x-1/2 rounded-full bg-black flex items-center justify-center">
-                 {callState === "in_call" && (
-                   <div className="flex gap-0.5 items-center">
-                     <div className="w-1 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                     <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse [animation-delay:0.2s]" />
-                     <div className="w-1 h-2 bg-emerald-500 rounded-full animate-pulse [animation-delay:0.4s]" />
-                   </div>
-                 )}
+                {callState === "in_call" && (
+                  <div className="flex gap-0.5 items-center">
+                    <div className="w-1 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                    <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse [animation-delay:0.2s]" />
+                    <div className="w-1 h-2 bg-emerald-500 rounded-full animate-pulse [animation-delay:0.4s]" />
+                  </div>
+                )}
               </div>
 
               {/* Screen */}
               <div className="relative h-[780px] bg-black text-white flex flex-col">
                 {/* Status bar */}
-                <div className="flex items-center justify-between px-8 pt-6 pb-2 text-[12px] font-semibold text-zinc-400">
-                  <div>9:41</div>
-                  <div className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 3C8.5 3 5.4 4.6 3.3 7.1L12 18l8.7-10.9C18.6 4.6 15.5 3 12 3z" />
+                <div className="flex items-center justify-between px-8 pt-6 pb-2 text-[12px] font-semibold text-zinc-200 tracking-tight">
+                  <div className="ios-time">{clock || "9:41"}</div>
+                  <div className="flex items-center gap-2 text-[11px] font-semibold">
+                    <span className="text-white/70">xAI</span>
+                    <div className="signal-bars">
+                      <span />
+                      <span />
+                      <span />
+                      <span />
+                    </div>
+                    <svg className="h-4 w-4 text-white/80" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path d="M4 14.5a8 8 0 0116 0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M8.5 15a3.5 3.5 0 017 0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M11.5 15a.5.5 0 011 0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M2 17h2v4H2v-4zm4-5h2v9H6v-9zm4-4h2v13h-2V8zm4-4h2v17h-2V4zm4 7h2v10h-2V11z" />
-                    </svg>
-                    <div className="ml-1 flex h-3.5 w-6 items-center rounded-sm border border-zinc-500 px-0.5">
-                      <div className="h-2 w-3.5 rounded-[1px] bg-zinc-400" />
+                    <div className="battery">
+                      <div className="battery-level" />
                     </div>
                   </div>
                 </div>
@@ -654,7 +714,7 @@ export default function Page() {
                       className={cx(
                         "relative mx-auto flex h-28 w-28 items-center justify-center rounded-full transition-all duration-500 shadow-2xl overflow-hidden",
                         callState === "in_call"
-                          ? "bg-linear-to-tr from-emerald-600 to-emerald-400 scale-110"
+                          ? "bg-gradient-to-tr from-emerald-600 to-emerald-400 scale-110"
                           : callState === "connecting"
                             ? "bg-zinc-800 animate-pulse"
                             : "bg-zinc-800 scale-100",
@@ -667,7 +727,7 @@ export default function Page() {
                       )}
                     </div>
                   </div>
-                  
+
                   {/* Name and status */}
                   <div className="space-y-1">
                     <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
@@ -711,7 +771,7 @@ export default function Page() {
                       Copy Transcript
                     </button>
                   )}
-                  <div 
+                  <div
                     ref={scrollRef}
                     className="flex-1 overflow-y-auto rounded-[28px] bg-zinc-900/40 border border-white/5 p-4 scroll-smooth no-scrollbar"
                   >
@@ -754,27 +814,38 @@ export default function Page() {
 
                 {/* Bottom controls - single row */}
                 <div className="pb-10 px-8 pt-4">
-                  <div className="flex justify-between items-center bg-zinc-900/40 p-4 rounded-[36px] border border-white/5 backdrop-blur-2xl">
+                  <div className="flex justify-between items-center bg-black/60 ios-glass p-4 rounded-[36px] border border-white/5">
                     {/* Mute button */}
                     <button
                       className={cx(
-                        "flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 transform active:scale-95",
+                        "flex h-11 w-11 items-center justify-center rounded-full transition-all duration-200 active:scale-95 active:opacity-85",
                         inCall
                           ? muted
-                            ? "bg-red-500 scale-105 shadow-lg shadow-red-500/20"
-                            : "glass hover:bg-white/20"
+                            ? "bg-red-500/90 text-white shadow-lg shadow-red-500/30"
+                            : "bg-white/10 text-white ios-glass"
                           : "opacity-20 grayscale cursor-not-allowed",
                       )}
-                      onClick={toggleMute}
+                      onClick={() => {
+                        triggerHaptic();
+                        toggleMute();
+                      }}
                       disabled={!inCall}
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         {muted ? (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z M3 3l18 18" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z M3 3l18 18"
+                          />
                         ) : (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                          />
                         )}
                       </svg>
                     </button>
@@ -782,8 +853,11 @@ export default function Page() {
                     {/* Call button */}
                     {callState === "idle" || callState === "ended" || callState === "error" ? (
                       <button
-                        className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-xl shadow-emerald-500/40 transition-all duration-300 transform hover:scale-110 active:scale-90"
-                        onClick={startCall}
+                        className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-[0_10px_30px_rgba(16,185,129,0.45)] transition-all duration-200 hover:scale-110 active:scale-92 active:opacity-90"
+                        onClick={() => {
+                          triggerHaptic(25);
+                          startCall();
+                        }}
                       >
                         <svg className="h-8 w-8 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z" />
@@ -791,8 +865,11 @@ export default function Page() {
                       </button>
                     ) : (
                       <button
-                        className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 shadow-xl shadow-red-500/40 transition-all duration-300 transform hover:scale-110 active:scale-90"
-                        onClick={() => stopCall(false)}
+                        className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 shadow-[0_10px_30px_rgba(239,68,68,0.45)] transition-all duration-200 hover:scale-110 active:scale-92 active:opacity-90"
+                        onClick={() => {
+                          triggerHaptic(18);
+                          stopCall(false);
+                        }}
                       >
                         <svg className="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.956.956 0 01-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 00-2.67-1.85.996.996 0 01-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
@@ -803,23 +880,34 @@ export default function Page() {
                     {/* Speaker button */}
                     <button
                       className={cx(
-                        "flex h-12 w-12 items-center justify-center rounded-full transition-all duration-300 transform active:scale-95",
+                        "flex h-11 w-11 items-center justify-center rounded-full transition-all duration-200 active:scale-95 active:opacity-85",
                         inCall
                           ? !speaker
-                            ? "bg-red-500 scale-105 shadow-lg shadow-red-500/20"
-                            : "glass hover:bg-white/20"
+                            ? "bg-red-500/90 text-white shadow-lg shadow-red-500/30"
+                            : "bg-white/10 text-white ios-glass"
                           : "opacity-20 grayscale cursor-not-allowed",
                       )}
-                      onClick={toggleSpeaker}
+                      onClick={() => {
+                        triggerHaptic();
+                        toggleSpeaker();
+                      }}
                       disabled={!inCall}
                     >
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         {!speaker ? (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                          />
                         ) : (
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                          />
                         )}
                       </svg>
                     </button>
@@ -827,7 +915,7 @@ export default function Page() {
                 </div>
 
                 {/* Home indicator */}
-                <div className="absolute bottom-2 left-1/2 h-1 w-32 -translate-x-1/2 rounded-full bg-white/20" />
+                <div className="absolute bottom-2 left-1/2 h-1 w-32 -translate-x-1/2 rounded-full bg-white/24 shadow-[0_0_0_6px_rgba(255,255,255,0.04)] mb-[6px]" />
               </div>
             </div>
           </div>
